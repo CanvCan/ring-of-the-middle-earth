@@ -1,0 +1,58 @@
+# ==========================================
+# Golang
+# ==========================================
+# Derlenmiş çalıştırılabilir dosyalar
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go bağımlılıkları (eğer vendor kullanıyorsan)
+vendor/
+
+# ==========================================
+# Node.js & Frontend (scripts ve ui için)
+# ==========================================
+node_modules/
+npm-debug.log
+yarn-error.log
+.pnpm-debug.log
+
+# Build çıktıları
+dist/
+build/
+out/
+
+# ==========================================
+# Docker & Çevre Değişkenleri
+# ==========================================
+.env
+*.env
+.env.local
+
+# ==========================================
+# IDE ve Editörler
+# ==========================================
+# JetBrains (GoLand vb.)
+.idea/
+*.iml
+
+# VS Code
+.vscode/
+
+# ==========================================
+# İşletim Sistemi & Diğerleri
+# ==========================================
+# Windows
+Thumbs.db
+ehthumbs.db
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+
+# AI Araçları (Ekran görüntündeki .claude klasörü)
+.claude/

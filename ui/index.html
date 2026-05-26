@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Ring of the Middle Earth</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Cinzel+Decorative:wght@400;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=5">
+</head>
+<body>
+
+<!-- ── Login ─────────────────────────────────────────────── -->
+<div id="login">
+  <div class="login-stars"></div>
+  <div class="lbox">
+    <div class="lbox-header">
+      <div class="lbox-ring">💍</div>
+      <h1>Ring of the<br>Middle Earth</h1>
+      <p class="sub">Distributed Strategy — Third Age</p>
+    </div>
+    <div class="lbox-divider"></div>
+    <div class="fg">
+      <label>Thy Name</label>
+      <input id="pid" placeholder="Enter thy name, traveller…"/>
+    </div>
+    <div class="fg">
+      <label>Allegiance</label>
+      <select id="pside">
+        <option value="FREE_PEOPLES">⚪ Light Side — Free Peoples</option>
+        <option value="SHADOW">⚫ Dark Side — Shadow</option>
+      </select>
+    </div>
+    <button class="btn-join" onclick="joinGame()">Enter Middle Earth</button>
+    <div class="guide">
+      <div class="guide-ornament">✦ The Counsel of Elrond ✦</div>
+      <p><strong>Light Side:</strong> Guide the Ring Bearer from The Shire to Mount Doom. Assign routes, protect path endpoints, invoke Gandalf's power when roads are sealed.</p>
+      <p><strong>Dark Side:</strong> Unleash the Nazgûl upon the passes. Let Saruman corrupt the southern roads. Bring the Eye's gaze to bear on what darkness hides.</p>
+      <p class="guide-note">Turn duration: 60 seconds. Units advance one step each turn.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Game ──────────────────────────────────────────────── -->
+<div id="game">
+
+  <!-- Header -->
+  <header class="hdr">
+    <div class="hdr-bar">
+      <div class="hdr-left">
+        <span class="hdr-emblem">⚔</span>
+        <span class="hdr-player" id="hdr-player">—</span>
+      </div>
+      <div class="hdr-center">
+        <span class="hdr-turn" id="hdr-turn">Turn 0</span>
+        <span class="hdr-status" id="hdr-status"></span>
+      </div>
+      <div class="hdr-right">
+        <span class="hdr-conn" id="hdr-conn">● Disconnected</span>
+      </div>
+    </div>
+    <div class="timer-track">
+      <div id="turn-timer-bar"></div>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <div class="main">
+
+    <!-- Map -->
+    <div id="map-area">
+      <svg id="game-map" viewBox="0 0 1400 870" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="nshadow">
+            <feDropShadow dx="1" dy="2" stdDeviation="3" flood-color="#1a1209" flood-opacity="0.5"/>
+          </filter>
+          <filter id="gold-glow" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="4" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <radialGradient id="parchment-bg" cx="38%" cy="35%" r="78%">
+            <stop offset="0%"   stop-color="#f7edcf"/>
+            <stop offset="55%"  stop-color="#edd9a3"/>
+            <stop offset="100%" stop-color="#cca96a"/>
+          </radialGradient>
+          <g id="icon-plains">
+            <path d="M-8 4 L8 4 M-5 4 L-7 -2 M0 4 L0 -4 M5 4 L7 -2"
+                  fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round"/>
+          </g>
+          <g id="icon-swamp">
+            <path d="M-10 1 Q-5 -3 0 1 T10 1 M-8 6 Q-4 2 1 6 T9 6"
+                  fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round"/>
+          </g>
+          <g id="icon-mountains">
+            <path d="M-12 6 L-4 -8 L2 2 M-2 6 L6 -10 L14 6"
+                  fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+          </g>
+          <g id="icon-forest">
+            <path d="M0 -10 L-7 2 L-3 2 L-9 12 L9 12 L3 2 L7 2 Z" fill="rgba(255,255,255,0.85)"/>
+          </g>
+          <g id="icon-fortress">
+            <path d="M-9 -6 L-9 8 L9 8 L9 -6 L5 -6 L5 -2 L-5 -2 L-5 -6 Z" fill="rgba(255,255,255,0.85)"/>
+          </g>
+          <g id="icon-volcanic">
+            <path d="M-11 8 L-4 -4 L4 -4 L11 8 Z"
+                  fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M-3 -8 Q0 -13 3 -8" fill="none" stroke="#f9ca24" stroke-width="2.5" stroke-linecap="round"/>
+          </g>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#parchment-bg)"/>
+        <g id="edges-g" transform="translate(0,50)"></g>
+        <g id="nodes-g" transform="translate(0,50)"></g>
+        <g id="units-g" transform="translate(0,50)"></g>
+      </svg>
+      <div id="tip"></div>
+    </div>
+
+    <!-- Right Panel -->
+    <div id="panel">
+
+      <div class="p-section">
+        <div class="p-title"><span class="p-icon">⚔</span>Armies of Middle Earth</div>
+      </div>
+      <div id="unit-scroll"></div>
+
+      <div id="order-panel">
+        <div class="p-title p-title-order">
+          <span class="p-icon">📜</span>Order — <span id="sel-name"></span>
+        </div>
+        <div id="route-builder">
+          <div class="rb-head" id="rb-head">🗺 Click adjacent nodes on the MAP to build your route</div>
+          <div class="rb-preview" id="rprev">Awaiting your command…</div>
+          <div class="rb-btns">
+            <button class="rb-confirm" onclick="confirmRoute()">✓ Confirm Route</button>
+            <button class="rb-clear"   onclick="clearRoute()">✕ Start Over</button>
+          </div>
+        </div>
+        <div class="order-btns" id="order-btns"></div>
+        <button class="btn-cancel" onclick="clearSel()">✕ Cancel</button>
+      </div>
+
+      <div class="p-section">
+        <div class="p-title"><span class="p-icon">🔭</span>Counsel of the Wise</div>
+        <div class="analysis-wrap">
+          <button id="btn-routes"    style="display:none" class="btn-analysis" onclick="fetchAnalysis('routes')">Route Risk Assessment ↗</button>
+          <button id="btn-intercept" style="display:none" class="btn-analysis" onclick="fetchAnalysis('intercept')">Interception Plan ↗</button>
+          <pre id="aout"></pre>
+        </div>
+      </div>
+
+      <div class="p-section">
+        <div class="p-title"><span class="p-icon">📖</span>Chronicle of Events</div>
+      </div>
+      <div id="elog-scroll"></div>
+
+    </div>
+  </div>
+
+  <!-- Turn banner — shows briefly when phase changes -->
+  <div id="turn-banner" style="display:none"></div>
+
+  <!-- Pending orders (above footer) -->
+  <div id="pending-list" style="display:none"></div>
+
+  <!-- Footer -->
+  <div class="ftr">
+    <button class="btn-submit" id="sbtn" onclick="submitOrders()" disabled>⚔ Dispatch Orders</button>
+    <span id="hint-bar"></span>
+  </div>
+
+</div>
+
+<!-- ── Game Over ───────────────────────────────────────────── -->
+<div id="over">
+  <div class="over-box">
+    <div class="over-emblem">💍</div>
+    <h1 id="ov-title"></h1>
+    <p id="ov-cause"></p>
+    <button class="btn-join" onclick="location.reload()">Play Again</button>
+  </div>
+</div>
+
+<script src="game.js?v=5"></script>
+</body>
+</html>

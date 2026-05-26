@@ -1,0 +1,216 @@
+services:
+
+  # ── Zookeeper ─────────────────────────────────────────────────────────────
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  # ── Kafka cluster — 3 brokers (replication-factor 3 requires ≥ 3 brokers) ─
+  kafka-1:
+    image: confluentinc/cp-kafka:7.5.0
+    depends_on: [zookeeper]
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+
+  kafka-2:
+    image: confluentinc/cp-kafka:7.5.0
+    depends_on: [zookeeper]
+    ports:
+      - "9093:9093"
+    environment:
+      KAFKA_BROKER_ID: 2
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-2:29093,PLAINTEXT_HOST://localhost:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+
+  kafka-3:
+    image: confluentinc/cp-kafka:7.5.0
+    depends_on: [zookeeper]
+    ports:
+      - "9094:9094"
+    environment:
+      KAFKA_BROKER_ID: 3
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-3:29094,PLAINTEXT_HOST://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+
+  # ── Schema Registry ───────────────────────────────────────────────────────
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.5.0
+    depends_on: [kafka-1, kafka-2, kafka-3]
+    ports:
+      - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka-1:29092,kafka-2:29093,kafka-3:29094
+
+  # ── Topic init (waits for all 3 brokers to be ready) ─────────────────────
+  kafka-init:
+    image: confluentinc/cp-kafka:7.5.0
+    depends_on: [kafka-1, kafka-2, kafka-3]
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      "
+      echo 'Waiting for 3 Kafka brokers...'
+      cub kafka-ready -b kafka-1:29092 3 60
+      echo 'Creating topics...'
+      kafka-topics --bootstrap-server kafka-1:29092 --create --if-not-exists \
+        --topic game.orders.raw       --partitions 3 --replication-factor 3 \
+        --config cleanup.policy=delete --config retention.ms=3600000
+      kafka-topics --bootstrap-server kafka-1:29092 --create --if-not-exists \
+        --topic game.orders.validated --partitions 6 --replication-factor 3 \
+        --config cleanup.policy=delete --config retention.ms=3600000
+      kafka-topics --bootstrap-server kafka-1:29092 --create --if-not-exists \
+        --topic game.events.unit      --partitions 6 --replication-factor 3 \
+        --config cleanup.policy=delete --config retention.ms=604800000
+      kafka-topics --bootstrap-server kafka-1:29092 --create --if-not-exists \
+        --topic game.events.region    --partitions 6 --replication-factor 3 \
+        --config cleanup.policy=delete --config retention.ms=604800000
+      kafka-topics --bootstrap-server kafka-1:29092 --create --if-not-exists \
+        --topic game.events.path      --partitions 6 --replication-factor 3 \
+        --config cleanup.policy=delete --config retention.ms=604800000
+      kafka-topics --bootstrap-server kafka-1:29092 --create --if-not-exists \
+        --topic game.session          --partitions 1 --replication-factor 3 \
+        --config cleanup.policy=compact
+      kafka-topics --bootstrap-server kafka-1:29092 --create --if-not-exists \
+        --topic game.broadcast        --partitions 1 --replication-factor 3 \
+        --config cleanup.policy=delete --config retention.ms=3600000
+      kafka-topics --bootstrap-server kafka-1:29092 --create --if-not-exists \
+        --topic game.ring.position    --partitions 1 --replication-factor 3 \
+        --config cleanup.policy=delete --config retention.ms=3600000
+      kafka-topics --bootstrap-server kafka-1:29092 --create --if-not-exists \
+        --topic game.ring.detection   --partitions 2 --replication-factor 3 \
+        --config cleanup.policy=delete --config retention.ms=3600000
+      kafka-topics --bootstrap-server kafka-1:29092 --create --if-not-exists \
+        --topic game.dlq              --partitions 3 --replication-factor 3 \
+        --config cleanup.policy=delete --config retention.ms=604800000
+      echo 'All topics created.'
+      "
+
+  # ── Schema registration (registers all .avsc files with Schema Registry) ──
+  schema-init:
+    image: confluentinc/cp-schema-registry:7.5.0
+    depends_on: [schema-registry, kafka-init]
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      "
+      echo 'Waiting for Schema Registry...'
+      sleep 15
+      BASE=http://schema-registry:8081/subjects
+
+      register() {
+        file=$$1; subject=$$2
+        schema=$$(cat /schemas/$${file} | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')
+        curl -sf -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' \
+          -d \"{\\\"schema\\\": $${schema}}\" \
+          $${BASE}/$${subject}/versions \
+          && echo \"Registered: $${subject}\" || echo \"Failed: $${subject}\"
+      }
+
+      # Subject naming: {topicName}-value  (spec Section 10)
+      register order-submitted.avsc          game.orders.raw-value
+      register order-validated-v1.avsc       game.orders.validated-value
+      register order-validated-v2.avsc       game.orders.validated-value
+      register unit-moved.avsc               game.events.unit-value
+      register path-status-changed.avsc      game.events.path-value
+      register path-corrupted.avsc           game.events.path-value
+      register region-control-changed.avsc   game.events.region-value
+      register battle-resolved.avsc          game.events.region-value
+      register ring-bearer-moved.avsc        game.ring.position-value
+      register ring-bearer-detected.avsc     game.ring.detection-value
+      register ring-bearer-spotted.avsc      game.ring.detection-value
+      register world-state-snapshot.avsc     game.broadcast-value
+      register game-over.avsc                game.broadcast-value
+      register dlq-entry.avsc                game.dlq-value
+
+      echo 'Schema registration complete.'
+      "
+    volumes:
+      - ./kafka/schemas:/schemas:ro
+
+  # ── Kafka Streams processor (Topologies 1 & 2) ───────────────────────────
+  streams-processor:
+    build:
+      context: .
+      dockerfile: kafka/streams/Dockerfile
+    environment:
+      KAFKA_BROKERS: "kafka-1:29092,kafka-2:29093,kafka-3:29094"
+    depends_on: [kafka-init]
+    restart: on-failure
+
+  # ── Go game engine — 3 stateless instances ────────────────────────────────
+  go-1:
+    build:
+      context: .
+      dockerfile: option-b/Dockerfile
+    environment:
+      NODE_ID: "go-1"
+      KAFKA_BROKERS: "kafka-1:29092,kafka-2:29093,kafka-3:29094"
+      SCHEMA_REGISTRY_URL: "http://schema-registry:8081"
+      PORT: "8080"
+      UNITS_CONF: "/app/config/units.conf"
+      MAP_CONF: "/app/config/map.conf"
+    ports:
+      - "8080:8080"
+      - "6060:6060"
+    depends_on: [kafka-init, schema-init]
+    restart: on-failure
+
+  go-2:
+    build:
+      context: .
+      dockerfile: option-b/Dockerfile
+    environment:
+      NODE_ID: "go-2"
+      KAFKA_BROKERS: "kafka-1:29092,kafka-2:29093,kafka-3:29094"
+      SCHEMA_REGISTRY_URL: "http://schema-registry:8081"
+      PORT: "8080"
+      UNITS_CONF: "/app/config/units.conf"
+      MAP_CONF: "/app/config/map.conf"
+    depends_on: [kafka-init, schema-init]
+    restart: on-failure
+
+  go-3:
+    build:
+      context: .
+      dockerfile: option-b/Dockerfile
+    environment:
+      NODE_ID: "go-3"
+      KAFKA_BROKERS: "kafka-1:29092,kafka-2:29093,kafka-3:29094"
+      SCHEMA_REGISTRY_URL: "http://schema-registry:8081"
+      PORT: "8080"
+      UNITS_CONF: "/app/config/units.conf"
+      MAP_CONF: "/app/config/map.conf"
+    depends_on: [kafka-init, schema-init]
+    restart: on-failure
+
+  # ── Nginx load balancer + UI ──────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ui:/usr/share/nginx/html:ro
+    depends_on: [go-1, go-2, go-3]
