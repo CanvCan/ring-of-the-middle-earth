@@ -72,6 +72,7 @@ func main() {
 	// Server reads from EventRouter's pre-routed channels — NOT from raw eventCh.
 	// EventRouter is the sole reader of eventCh, eliminating the race condition.
 	srv := api.NewServer(lightSideSSECh, darkSideSSECh, cacheUpdateCh, engineCh, cm, port, tp, producer, cfg)
+	srv.BootstrapKafka()
 	srv.SetReady()
 	srv.Run(ctx)
 }

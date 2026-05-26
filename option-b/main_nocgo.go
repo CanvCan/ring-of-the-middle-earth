@@ -10,11 +10,11 @@ import (
 	"github.com/rotr/option-b/internal/state"
 )
 
-// buildProducer returns a NoopProducer when CGO is not available.
-// This allows `go build ./...` and `go test ./tests/...` to work on
-// Windows without gcc. Real Kafka is only used inside Docker (CGO enabled).
+// buildProducer returns a NoopProducer.
+// NewServer detects this type and wires a direct synchronous localOrderInject
+// so orders are written straight into kafkaValidatedOrders without any async hops.
 func buildProducer(_ string) kafkaclient.MessageProducer {
-	log.Println("[main] CGO not available — using NoopProducer (Kafka disabled)")
+	log.Println("[main] CGO not available — using NoopProducer with direct order inject")
 	return &kafkaclient.NoopProducer{}
 }
 

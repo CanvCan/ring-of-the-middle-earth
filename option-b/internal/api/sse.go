@@ -26,7 +26,7 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	writeCh := make(chan []byte, 32)
+	writeCh := make(chan []byte, 256)
 	s.newConnectionCh <- SSEConnection{
 		PlayerID: playerID,
 		Side:     side,

@@ -145,21 +145,39 @@ function handleEvent(ev) {
       break;
 
     case 'UnitMoved': {
-      const u = G.units[ev.unitId] || {};
+      // Immediately apply new position so the map updates without waiting for an
+      // async REST round-trip. This is the primary fix for the stale-position bug.
+      const u = G.units[ev.unitId];
+      if (u) {
+        u.currentRegion = ev.to;
+        renderMapUnits();
+        renderUnitList();
+      }
       const fromLabel = (NODES[ev.from]||{label:ev.from||'?'}).label;
       const toLabel   = (NODES[ev.to]  ||{label:ev.to  ||'?'}).label;
-      const cls = (u.class||'Unit') + (u.side==='SHADOW'?' [Dark]':' [Light]');
+      const cls = ((u&&u.class)||'Unit') + ((u&&u.side)==='SHADOW'?' [Dark]':' [Light]');
       logEntry('move',
-        u.side==='SHADOW'?'🦅':'🧝',
+        (u&&u.side)==='SHADOW'?'🦅':'🧝',
         ev.unitId + ' (' + cls + '): ' + fromLabel + ' → ' + toLabel);
-      fetchState();
+      // Debounced full-state refresh for strength/status/cooldown updates
+      fetchStateDebounced();
       break;
     }
 
     case 'RingBearerMoved': {
+      // Light Side only: immediately show new Ring Bearer position on the map.
+      if (G.side === 'FREE_PEOPLES' && ev.trueRegion) {
+        const rb = G.units['ring-bearer'] || Object.values(G.units).find(u => u.class === 'RingBearer');
+        if (rb) {
+          rb.currentRegion = ev.trueRegion;
+          renderMapUnits();
+          renderUnitList();
+        }
+      }
       const toLabel = (NODES[ev.trueRegion]||{label:ev.trueRegion||'?'}).label;
       logEntry('rb', '💍', 'Ring Bearer advanced to ' + toLabel, 'hi');
-      fetchState();
+      // Debounced full refresh to sync remaining state (exposure, turn counter, etc.)
+      fetchStateDebounced();
       break;
     }
 
@@ -172,14 +190,14 @@ function handleEvent(ev) {
       if (ev.surveillanceLevel > 0) detail += ' · Surveillance: ' + ev.surveillanceLevel;
       if (ev.tempOpenTurns   > 0) detail += ' · Open for ' + ev.tempOpenTurns + ' turns';
       logEntry('path', icon, detail, cls);
-      fetchState();
+      fetchStateDebounced();
       break;
     }
 
     case 'PathCorrupted': {
       const pathLabel = ev.pathId.replace(/-/g,' ');
       logEntry('path', '💀', 'Road [' + pathLabel + '] CORRUPTED permanently — Surveillance: 3', 'danger');
-      fetchState();
+      fetchStateDebounced();
       break;
     }
 
@@ -202,7 +220,7 @@ function handleEvent(ev) {
       } else {
         logEntry('battle', '🛡', 'BATTLE at ' + rLabel + ' — DEFENDER HELD, attackers take losses', 'danger');
       }
-      fetchState();
+      fetchStateDebounced();
       break;
     }
 
@@ -221,7 +239,7 @@ function handleEvent(ev) {
       const rLabel = (NODES[ev.regionId]||{label:ev.regionId}).label;
       const side = ev.newControl==='FREE_PEOPLES'?'⚪ Free Peoples':ev.newControl==='SHADOW'?'⚫ Shadow':'Neutral';
       logEntry('region', '🏴', rLabel + ' now under ' + side + ' control', 'hi');
-      fetchState();
+      fetchStateDebounced();
       break;
     }
 
@@ -235,7 +253,7 @@ function handleEvent(ev) {
       } else {
         logEntry('maia', '✨', ev.unitId + ' used Maia Ability on [' + pathLabel + ']');
       }
-      fetchState();
+      fetchStateDebounced();
       break;
     }
 
@@ -251,6 +269,19 @@ async function fetchState() {
     document.getElementById('hdr-status').textContent='';
     applySnap(await r.json());
   } catch(e) { document.getElementById('hdr-status').textContent='Unreachable'; }
+}
+
+// Debounced fetchState — coalesces rapid concurrent calls into one per 300 ms window.
+// Prevents multiple in-flight GET /api/game/state requests racing each other after a
+// turn-end burst of SSE events. (B9 — no goroutine leaks analogue in JS: no extra
+// promises left dangling.)
+let _fetchDebounceTimer = null;
+function fetchStateDebounced() {
+  if (_fetchDebounceTimer !== null) return; // already scheduled
+  _fetchDebounceTimer = setTimeout(() => {
+    _fetchDebounceTimer = null;
+    fetchState();
+  }, 300);
 }
 
 function applySnap(d) {

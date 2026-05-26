@@ -70,6 +70,13 @@ type Server struct {
 	playerSides           map[string]string // playerID → side (from SSE connections)
 	playerSidesMu         sync.RWMutex
 	ready                 atomic.Bool       // true once Kafka recovery + consumers are up
+
+	// localOrderInject is non-nil in local/no-Kafka mode (NoopProducer).
+	// handleOrder calls it to write order bytes directly and synchronously into
+	// kafkaValidatedOrders, bypassing the entire async chain. This guarantees
+	// every order is queued before the HTTP 202 response is returned to the browser
+	// — and therefore before the browser can ever send /orders/dispatch.
+	localOrderInject func(raw []byte)
 }
 
 func NewServer(
@@ -103,12 +110,72 @@ func NewServer(
 		submitCh:          make(chan string, 4),
 		playerSides:       make(map[string]string),
 	}
+	// In local mode (no Kafka), wire a direct synchronous inject so handleOrder
+	// writes straight into kafkaValidatedOrders before returning HTTP 202.
+	// With real Kafka (CGO build) producer is never a NoopProducer, so this stays nil.
+	if noop, ok := producer.(*kafkaclient.NoopProducer); ok {
+		_ = noop // keep reference so the compiler doesn't optimise it away
+		s.localOrderInject = func(raw []byte) {
+			s.kafkaValidatedMu.Lock()
+			s.kafkaValidatedOrders = append(s.kafkaValidatedOrders, json.RawMessage(raw))
+			s.kafkaValidatedMu.Unlock()
+		}
+	}
 	s.registerRoutes()
 	return s
 }
 
 // SetReady marks the server as ready to serve traffic (called from main after recovery).
 func (s *Server) SetReady() { s.ready.Store(true) }
+
+// BootstrapKafka publishes the initial state of the game to Kafka topics so that
+// Topology 1 (Kafka Streams) has the data needed to validate orders on a fresh start.
+func (s *Server) BootstrapKafka() {
+	snap := s.cache.Get()
+	if snap.Turn > 0 {
+		return // Not a fresh start, state was recovered
+	}
+
+	log.Printf("[server] bootstrapping Kafka topics with initial state")
+
+	pub := func(topic, key string, payload interface{}) {
+		data, _ := json.Marshal(payload)
+		if err := s.producer.ProduceSync(topic, key, data); err != nil {
+			log.Printf("[bootstrap] publish %s %s: %v", topic, key, err)
+		}
+	}
+
+	for pid, p := range snap.Paths {
+		pcfg := s.cfg.PathsByID[pid]
+		pub("game.events.path", pid, map[string]interface{}{
+			"id":                pid,
+			"status":            string(p.Status),
+			"surveillanceLevel": p.SurveillanceLevel,
+			"blockedBy":         p.BlockedBy,
+			"from":              pcfg.From,
+			"to":                pcfg.To,
+		})
+	}
+
+	for rid, r := range snap.Regions {
+		pub("game.events.region", rid, map[string]interface{}{
+			"id":      rid,
+			"control": string(r.Control),
+		})
+	}
+
+	for uid, u := range snap.Units {
+		ucfg := snap.UnitConfigs[uid]
+		pub("game.events.unit", uid, map[string]interface{}{
+			"id":       uid,
+			"side":     ucfg.Side,
+			"class":    ucfg.Class,
+			"region":   u.Region,
+			"status":   string(u.Status),
+			"cooldown": u.Cooldown,
+		})
+	}
+}
 
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/game/start",         s.handleGameStart)
@@ -288,6 +355,26 @@ func (s *Server) processTurnEnd(clients map[string]SSEConnection) {
 		return
 	}
 
+	// Drain any orders that are still in-flight in engineCh before snapshotting
+	// kafkaValidatedOrders. This closes the race between order arrival and dispatch:
+	// the HTTP handler for /order completes (and returns 202) before /orders/dispatch
+	// is sent by the browser, so all orders are guaranteed to be in engineCh or
+	// kafkaValidatedOrders by the time we get here. A non-blocking drain picks up
+	// anything still buffered in the channel.
+	for {
+		select {
+		case event := <-s.engineCh:
+			if event.Topic == "game.orders.validated" {
+				s.kafkaValidatedMu.Lock()
+				s.kafkaValidatedOrders = append(s.kafkaValidatedOrders, json.RawMessage(event.Payload))
+				s.kafkaValidatedMu.Unlock()
+			}
+		default:
+			goto ordersReady
+		}
+	}
+ordersReady:
+
 	// Collect and clear Kafka-validated orders (arrived via game.orders.validated → engineCh)
 	s.kafkaValidatedMu.Lock()
 	rawOrders := make([]json.RawMessage, len(s.kafkaValidatedOrders))
@@ -378,7 +465,11 @@ func (s *Server) processTurnEnd(clients map[string]SSEConnection) {
 	// Determine Dark Side player ID for detection event keying (spec: key=playerId).
 	darkPlayerID := s.darkPlayerID()
 
-	// Publish events to Kafka (async)
+	// Publish turn-state to game.session synchronously so Topology1 always sees
+	// the correct current turn before the next order is submitted.
+	s.publishTurnState(cache.Turn)
+
+	// Publish game events to Kafka asynchronously (unit moves, path changes, etc.)
 	go s.publishEvents(events, cache.Turn, darkPlayerID)
 
 	// Persist state snapshot to game.session for crash recovery (B2).
@@ -614,6 +705,16 @@ func (s *Server) darkPlayerID() string {
 	return "dark" // fallback before any player connects
 }
 
+// publishTurnState emits the current turn number to game.session synchronously.
+// Topology1 must see the new turn before the next order arrives, so this runs
+// on the main goroutine rather than in the async publishEvents goroutine.
+func (s *Server) publishTurnState(turn int) {
+	data, _ := json.Marshal(map[string]interface{}{"currentTurn": turn})
+	if err := s.producer.ProduceSync("game.session", "turn-state", data); err != nil {
+		log.Printf("[publish] turn-state: %v", err)
+	}
+}
+
 func (s *Server) publishEvents(events *game.TurnEvents, turn int, darkPlayerID string) {
 	pub := func(topic, key string, v interface{}) {
 		data, _ := json.Marshal(v)
@@ -621,9 +722,6 @@ func (s *Server) publishEvents(events *game.TurnEvents, turn int, darkPlayerID s
 			log.Printf("[publish] %s: %v", topic, err)
 		}
 	}
-
-	// Publish current turn to game.session so Topology1 Rule 1 stays current.
-	pub("game.session", "turn-state", map[string]interface{}{"currentTurn": turn})
 
 	// Snapshot of current cache used to enrich events with side/class/cooldown/endpoints.
 	snap := s.cache.Get()
@@ -804,8 +902,15 @@ func (s *Server) getActiveSide() string {
 	return s.activeSide
 }
 
-// broadcastPhaseChange sends a PhaseChanged event to all clients and pushes a full state snapshot.
+// broadcastPhaseChange pushes a full WorldStateSnapshot first (so the UI has current unit
+// positions), then sends the PhaseChanged event. This ordering guarantees the browser
+// paints correct positions before reacting to the phase transition.
 func (s *Server) broadcastPhaseChange(clients map[string]SSEConnection, side string) {
+	// 1. Push fresh state first — unit positions are up-to-date before the UI responds
+	for _, conn := range clients {
+		s.pushStateToClient(conn)
+	}
+	// 2. Then signal the phase change
 	data, _ := json.Marshal(map[string]interface{}{
 		"type":       "PhaseChanged",
 		"activeSide": side,
@@ -815,10 +920,6 @@ func (s *Server) broadcastPhaseChange(clients map[string]SSEConnection, side str
 		case conn.WriteCh <- data:
 		default:
 		}
-	}
-	// Also push a fresh WorldStateSnapshot so UI sees activeSide immediately
-	for _, conn := range clients {
-		s.pushStateToClient(conn)
 	}
 }
 

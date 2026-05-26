@@ -55,7 +55,9 @@ func (kt *KTable[V]) All() map[string]V {
 	return out
 }
 
-// NoopProducer is used in tests — satisfies MessageProducer without CGO.
+// NoopProducer is used in tests and local mode (no CGO/Kafka).
+// In local mode, NewServer detects this type and sets localOrderInject to write
+// orders directly into kafkaValidatedOrders — no async channel chain needed.
 type NoopProducer struct {
 	Published []struct{ Topic, Key string; Value []byte }
 }
