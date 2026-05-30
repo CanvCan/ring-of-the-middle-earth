@@ -307,13 +307,13 @@ func (s *Server) Run(ctx context.Context) {
 				s.broadcastPhaseChange(clients, config.SideDark)
 				turnTimer.Reset(time.Duration(s.cfg.Game.TurnDurationSeconds) * time.Second)
 			} else {
-				// Dark ran out of time — process the full turn
+				// Dark ran out of time — switch phase immediately, then process the turn
 				log.Printf("[turn] Dark phase timed out — processing turn")
-				s.processTurnEnd(clients)
 				s.activeSideMu.Lock()
 				s.activeSide = config.SideLight
 				s.activeSideMu.Unlock()
 				s.broadcastPhaseChange(clients, config.SideLight)
+				s.processTurnEnd(clients)
 				turnTimer.Reset(time.Duration(s.cfg.Game.TurnDurationSeconds) * time.Second)
 			}
 
@@ -358,12 +358,12 @@ func (s *Server) processDispatch(side string, clients map[string]SSEConnection, 
 				default:
 				}
 			}
-			s.processTurnEnd(clients)
 			s.activeSideMu.Lock()
 			s.activeSide = config.SideLight
 			s.activeSideMu.Unlock()
-			turnTimer.Reset(time.Duration(s.cfg.Game.TurnDurationSeconds) * time.Second)
 			s.broadcastPhaseChange(clients, config.SideLight)
+			s.processTurnEnd(clients)
+			turnTimer.Reset(time.Duration(s.cfg.Game.TurnDurationSeconds) * time.Second)
 			return
 		}
 		// Normal case — advance to Dark's phase
@@ -380,7 +380,7 @@ func (s *Server) processDispatch(side string, clients map[string]SSEConnection, 
 		turnTimer.Reset(time.Duration(s.cfg.Game.TurnDurationSeconds) * time.Second)
 		s.broadcastPhaseChange(clients, config.SideDark)
 	} else {
-		// Dark done — process the full turn immediately
+		// Dark done — switch phase immediately so browser reacts without delay, then process turn
 		log.Printf("[turn] Dark dispatched — processing turn now")
 		if !turnTimer.Stop() {
 			select {
@@ -388,12 +388,12 @@ func (s *Server) processDispatch(side string, clients map[string]SSEConnection, 
 			default:
 			}
 		}
-		s.processTurnEnd(clients)
 		s.activeSideMu.Lock()
 		s.activeSide = config.SideLight
 		s.activeSideMu.Unlock()
-		turnTimer.Reset(time.Duration(s.cfg.Game.TurnDurationSeconds) * time.Second)
 		s.broadcastPhaseChange(clients, config.SideLight)
+		s.processTurnEnd(clients)
+		turnTimer.Reset(time.Duration(s.cfg.Game.TurnDurationSeconds) * time.Second)
 	}
 }
 
@@ -985,15 +985,10 @@ func (s *Server) getActiveSide() string {
 	return s.activeSide
 }
 
-// broadcastPhaseChange pushes a full WorldStateSnapshot first (so the UI has current unit
-// positions), then sends the PhaseChanged event. This ordering guarantees the browser
-// paints correct positions before reacting to the phase transition.
+// broadcastPhaseChange sends PhaseChanged immediately so the browser reacts without delay,
+// then pushes a full WorldStateSnapshot so unit positions are up-to-date.
 func (s *Server) broadcastPhaseChange(clients map[string]SSEConnection, side string) {
-	// 1. Push fresh state first — unit positions are up-to-date before the UI responds
-	for _, conn := range clients {
-		s.pushStateToClient(conn)
-	}
-	// 2. Then signal the phase change
+	// 1. Signal the phase change first — browser can react immediately
 	data, _ := json.Marshal(map[string]interface{}{
 		"type":       "PhaseChanged",
 		"activeSide": side,
@@ -1003,6 +998,10 @@ func (s *Server) broadcastPhaseChange(clients map[string]SSEConnection, side str
 		case conn.WriteCh <- data:
 		default:
 		}
+	}
+	// 2. Then push fresh state so unit positions are current
+	for _, conn := range clients {
+		s.pushStateToClient(conn)
 	}
 }
 
