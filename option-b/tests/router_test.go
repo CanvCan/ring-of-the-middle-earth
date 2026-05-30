@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/rotr/option-b/internal/router"
-	"github.com/rotr/option-b/internal/state"
+	"github.com/lotr/option-b/internal/router"
+	"github.com/lotr/option-b/internal/state"
 )
 
 // ── Case 1: WorldStateSnapshot with RB region set ─────────────────────────

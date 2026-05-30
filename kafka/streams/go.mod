@@ -1,4 +1,4 @@
-module github.com/rotr/streams
+module github.com/lotr/streams
 
 go 1.22
 

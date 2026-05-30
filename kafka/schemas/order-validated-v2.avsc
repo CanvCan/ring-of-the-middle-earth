@@ -1,7 +1,7 @@
 {
   "type": "record",
   "name": "OrderValidated",
-  "namespace": "com.rotr",
+  "namespace": "com.lotr",
   "fields": [
     {"name": "playerId",       "type": "string"},
     {"name": "unitId",         "type": "string"},

@@ -5,9 +5,9 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/rotr/option-b/internal/config"
-	"github.com/rotr/option-b/internal/game"
-	"github.com/rotr/option-b/internal/state"
+	"github.com/lotr/option-b/internal/config"
+	"github.com/lotr/option-b/internal/game"
+	"github.com/lotr/option-b/internal/state"
 )
 
 func (s *Server) handleGameStart(w http.ResponseWriter, r *http.Request) {

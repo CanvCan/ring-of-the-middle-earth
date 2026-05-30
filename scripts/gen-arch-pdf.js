@@ -11,7 +11,7 @@ const fs = require("fs");
 const path = require("path");
 
 const OUT = path.resolve(__dirname, "..", "architecture.pdf");
-const doc = new PDFDocument({ size: "A4", margin: 55, info: { Title: "Ring of the Middle Earth — Architecture Document", Author: "rotr" } });
+const doc = new PDFDocument({ size: "A4", margin: 55, info: { Title: "Ring of the Middle Earth — Architecture Document", Author: "lotr" } });
 doc.pipe(fs.createWriteStream(OUT));
 
 // ── Palette ──────────────────────────────────────────────────────────────────

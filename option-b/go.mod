@@ -1,4 +1,4 @@
-module github.com/rotr/option-b
+module github.com/lotr/option-b
 
 go 1.24.3
 

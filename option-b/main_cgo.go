@@ -5,9 +5,9 @@ package main
 import (
 	"log"
 
-	kafkaclient "github.com/rotr/option-b/internal/kafka"
-	"github.com/rotr/option-b/internal/router"
-	"github.com/rotr/option-b/internal/state"
+	kafkaclient "github.com/lotr/option-b/internal/kafka"
+	"github.com/lotr/option-b/internal/router"
+	"github.com/lotr/option-b/internal/state"
 )
 
 func buildProducer(brokers string) kafkaclient.MessageProducer {

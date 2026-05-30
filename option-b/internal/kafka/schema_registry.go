@@ -66,7 +66,7 @@ func registerSchema(registryURL, subject, schema string) (int, error) {
 const schemaOrderSubmitted = `{
   "type": "record",
   "name": "OrderSubmitted",
-  "namespace": "com.rotr.game",
+  "namespace": "com.lotr.game",
   "fields": [
     {"name": "playerId",  "type": "string"},
     {"name": "unitId",    "type": "string"},
@@ -82,7 +82,7 @@ const schemaOrderSubmitted = `{
 const schemaOrderValidatedV2 = `{
   "type": "record",
   "name": "OrderValidated",
-  "namespace": "com.rotr.game",
+  "namespace": "com.lotr.game",
   "fields": [
     {"name": "playerId",        "type": "string"},
     {"name": "unitId",          "type": "string"},
@@ -100,7 +100,7 @@ const schemaOrderValidatedV2 = `{
 const schemaDLQEntry = `{
   "type": "record",
   "name": "DLQEntry",
-  "namespace": "com.rotr.game",
+  "namespace": "com.lotr.game",
   "fields": [
     {"name": "originalTopic", "type": "string"},
     {"name": "partition",     "type": "int"},
@@ -116,7 +116,7 @@ const schemaDLQEntry = `{
 const schemaUnitEvent = `{
   "type": "record",
   "name": "UnitEvent",
-  "namespace": "com.rotr.game",
+  "namespace": "com.lotr.game",
   "fields": [
     {"name": "id",       "type": "string"},
     {"name": "side",     "type": "string"},
@@ -131,7 +131,7 @@ const schemaUnitEvent = `{
 const schemaRegionEvent = `{
   "type": "record",
   "name": "RegionEvent",
-  "namespace": "com.rotr.game",
+  "namespace": "com.lotr.game",
   "fields": [
     {"name": "regionId",      "type": "string"},
     {"name": "newController", "type": "string"},
@@ -144,7 +144,7 @@ const schemaRegionEvent = `{
 const schemaPathEvent = `{
   "type": "record",
   "name": "PathEvent",
-  "namespace": "com.rotr.game",
+  "namespace": "com.lotr.game",
   "fields": [
     {"name": "id",                "type": "string"},
     {"name": "status",            "type": "string"},
@@ -159,7 +159,7 @@ const schemaPathEvent = `{
 const schemaSessionEvent = `{
   "type": "record",
   "name": "SessionEvent",
-  "namespace": "com.rotr.game",
+  "namespace": "com.lotr.game",
   "fields": [
     {"name": "key",   "type": "string"},
     {"name": "value", "type": "string"}
@@ -170,7 +170,7 @@ const schemaSessionEvent = `{
 const schemaBroadcastEvent = `{
   "type": "record",
   "name": "BroadcastEvent",
-  "namespace": "com.rotr.game",
+  "namespace": "com.lotr.game",
   "fields": [
     {"name": "type",  "type": "string"},
     {"name": "turn",  "type": "int"},
@@ -184,7 +184,7 @@ const schemaBroadcastEvent = `{
 const schemaRingPosition = `{
   "type": "record",
   "name": "RingBearerMoved",
-  "namespace": "com.rotr.game",
+  "namespace": "com.lotr.game",
   "fields": [
     {"name": "trueRegion", "type": "string"},
     {"name": "turn",       "type": "int"}
@@ -195,7 +195,7 @@ const schemaRingPosition = `{
 const schemaRingDetection = `{
   "type": "record",
   "name": "RingBearerDetected",
-  "namespace": "com.rotr.game",
+  "namespace": "com.lotr.game",
   "fields": [
     {"name": "regionId", "type": "string"},
     {"name": "turn",     "type": "int"}

@@ -1,7 +1,7 @@
 {
   "type": "record",
   "name": "UnitMoved",
-  "namespace": "com.rotr",
+  "namespace": "com.lotr",
   "fields": [
     {"name": "unitId",    "type": "string"},
     {"name": "from",      "type": "string"},

@@ -1,7 +1,7 @@
 {
   "type": "record",
   "name": "WorldStateSnapshot",
-  "namespace": "com.rotr",
+  "namespace": "com.lotr",
   "fields": [
     {"name": "turn",      "type": "int"},
     {"name": "regions",   "type": {"type": "array", "items": "string"}},

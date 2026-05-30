@@ -5,12 +5,12 @@ import (
 	"log"
 	"os"
 
-	"github.com/rotr/option-b/internal/api"
-	"github.com/rotr/option-b/internal/config"
-	"github.com/rotr/option-b/internal/game"
-	kafkaclient "github.com/rotr/option-b/internal/kafka"
-	"github.com/rotr/option-b/internal/router"
-	"github.com/rotr/option-b/internal/state"
+	"github.com/lotr/option-b/internal/api"
+	"github.com/lotr/option-b/internal/config"
+	"github.com/lotr/option-b/internal/game"
+	kafkaclient "github.com/lotr/option-b/internal/kafka"
+	"github.com/lotr/option-b/internal/router"
+	"github.com/lotr/option-b/internal/state"
 )
 
 func main() {

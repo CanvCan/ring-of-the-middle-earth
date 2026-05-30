@@ -1,7 +1,7 @@
 {
   "type": "record",
   "name": "RingBearerMoved",
-  "namespace": "com.rotr",
+  "namespace": "com.lotr",
   "fields": [
     {"name": "trueRegion", "type": "string"},
     {"name": "turn",       "type": "int"},

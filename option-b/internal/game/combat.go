@@ -1,7 +1,7 @@
 package game
 
-import "github.com/rotr/option-b/internal/config"
-import "github.com/rotr/option-b/internal/state"
+import "github.com/lotr/option-b/internal/config"
+import "github.com/lotr/option-b/internal/state"
 
 // CombatResult holds the outcome of a battle.
 type CombatResult struct {
@@ -19,8 +19,8 @@ func ResolveCombat(
 	unitConfigs map[string]config.UnitConfig,
 	terrain ...string, // optional: defaults to "" (no terrain bonus)
 ) CombatResult {
-	attackPow := effectivePower(attackerIDs, units, unitConfigs, true, region)
-	defPow := effectivePower(defenderIDs, units, unitConfigs, false, region)
+	attackPow := effectivePower(attackerIDs, units, unitConfigs)
+	defPow := effectivePower(defenderIDs, units, unitConfigs)
 
 	terrainStr := ""
 	if len(terrain) > 0 {
@@ -43,25 +43,16 @@ func ResolveCombat(
 }
 
 // effectivePower sums the effective strengths of a group of units.
-// isAttacker controls whether ignoresFortress applies to terrain bonus.
 func effectivePower(
 	unitIDs []string,
 	units map[string]state.UnitSnapshot,
 	unitConfigs map[string]config.UnitConfig,
-	isAttacker bool,
-	region state.RegionState,
 ) int {
 	total := 0
 	for _, id := range unitIDs {
 		u := units[id]
-		cfg := unitConfigs[id]
 		eff := u.Strength
-		// Leadership bonus: +leadershipBonus from any leader in the same group
 		eff += leadershipBonus(id, unitIDs, unitConfigs)
-		// Terrain bonus applies only to defenders (or attackers without ignoresFortress
-		// is irrelevant here — terrain goes to defender power, not attacker)
-		_ = isAttacker
-		_ = cfg
 		total += eff
 	}
 	return total

@@ -84,13 +84,6 @@ type DeployNazgulOrder struct {
 	TargetRegionID string `json:"targetRegionId"`
 }
 
-// ParsedOrder wraps any order with its raw JSON payload.
-type ParsedOrder struct {
-	Type    string
-	Raw     []byte
-	Decoded interface{}
-}
-
 // ValidationError represents a validation failure.
 type ValidationError struct {
 	ErrorCode string

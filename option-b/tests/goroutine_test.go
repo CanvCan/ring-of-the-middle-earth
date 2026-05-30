@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rotr/option-b/internal/config"
-	"github.com/rotr/option-b/internal/game"
-	"github.com/rotr/option-b/internal/pipeline"
-	"github.com/rotr/option-b/internal/state"
+	"github.com/lotr/option-b/internal/config"
+	"github.com/lotr/option-b/internal/game"
+	"github.com/lotr/option-b/internal/pipeline"
+	"github.com/lotr/option-b/internal/state"
 )
 
 // TestGoroutineLeak_Pipeline verifies that Pipeline 1 and Pipeline 2 goroutines

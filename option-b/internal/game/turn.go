@@ -3,8 +3,8 @@ package game
 import (
 	"fmt"
 
-	"github.com/rotr/option-b/internal/config"
-	"github.com/rotr/option-b/internal/state"
+	"github.com/lotr/option-b/internal/config"
+	"github.com/lotr/option-b/internal/state"
 )
 
 // TurnEvents holds all events emitted during a single turn.
@@ -20,23 +20,25 @@ type TurnEvents struct {
 	RouteBlocked           []RouteBlockedEvent
 	RouteCompromised       []RouteCompromisedEvent
 	RouteComplete          []RouteCompleteEvent
+	MaiaAbilityUsed        []MaiaAbilityUsedEvent
 	GameOver               *GameOverEvent
 	WorldSnapshot          *WorldSnapshotEvent
 }
 
-type UnitMovedEvent           struct{ UnitID, From, To string; Turn int }
-type PathStatusChangedEvent   struct{ PathID string; NewStatus state.PathStatus; SurveillanceLevel, TempOpenTurns, Turn int }
-type PathCorruptedEvent       struct{ PathID string; Turn int }
+type UnitMovedEvent            struct{ UnitID, From, To string; Turn int }
+type PathStatusChangedEvent    struct{ PathID string; NewStatus state.PathStatus; SurveillanceLevel, TempOpenTurns, Turn int }
+type PathCorruptedEvent        struct{ PathID string; Turn int }
 type RegionControlChangedEvent struct{ RegionID, NewController string; Turn int }
-type BattleResolvedEvent      struct{ RegionID string; AttackerWon bool; Turn int }
-type RingBearerMovedEvent     struct{ TrueRegion string; Turn int }
-type RingBearerDetectedEvent  struct{ RegionID string; Turn int }
-type RingBearerSpottedEvent   struct{ PathID string; Turn int }
-type RouteBlockedEvent        struct{ UnitID, PathID string; Turn int }
-type RouteCompromisedEvent    struct{ UnitID string; Turn int }
-type RouteCompleteEvent       struct{ UnitID string; Turn int }
-type GameOverEvent            struct{ Winner, Cause string; Turn int }
-type WorldSnapshotEvent       struct{ Turn int }
+type BattleResolvedEvent       struct{ RegionID string; AttackerWon bool; Turn int }
+type RingBearerMovedEvent      struct{ TrueRegion string; Turn int }
+type RingBearerDetectedEvent   struct{ RegionID string; Turn int }
+type RingBearerSpottedEvent    struct{ PathID string; Turn int }
+type RouteBlockedEvent         struct{ UnitID, PathID string; Turn int }
+type RouteCompromisedEvent     struct{ UnitID string; Turn int }
+type RouteCompleteEvent        struct{ UnitID string; Turn int }
+type MaiaAbilityUsedEvent      struct{ UnitID, PathID, EventType string; Turn int }
+type GameOverEvent             struct{ Winner, Cause string; Turn int }
+type WorldSnapshotEvent        struct{ Turn int }
 
 // OrderBatch is all validated orders for a single turn.
 type OrderBatch struct {
@@ -88,6 +90,15 @@ func (tp *TurnProcessor) ProcessTurn(cache *state.WorldStateCache, batch OrderBa
 		if cache.UnitConfigs[o.UnitID].Class != config.ClassNazgul {
 			continue
 		}
+		// Nazgul must be at an endpoint of the path to search it.
+		unit := cache.Units[o.UnitID]
+		pc, ok := tp.pathConfigs[o.PathID]
+		if !ok {
+			continue
+		}
+		if unit.Region != pc.From && unit.Region != pc.To {
+			continue
+		}
 		p := cache.Paths[o.PathID]
 		if p.SurveillanceLevel < 3 {
 			p.SurveillanceLevel++
@@ -130,6 +141,9 @@ func (tp *TurnProcessor) ProcessTurn(cache *state.WorldStateCache, batch OrderBa
 				PathID: result.PathID, Turn: turn,
 			})
 		}
+		events.MaiaAbilityUsed = append(events.MaiaAbilityUsed, MaiaAbilityUsedEvent{
+			UnitID: o.UnitID, PathID: result.PathID, EventType: result.EventType, Turn: turn,
+		})
 	}
 
 	// Step 7: Auto-advance
@@ -319,6 +333,11 @@ func (tp *TurnProcessor) applyReinforce(o ReinforceRegionOrder, cache *state.Wor
 	if cfg.Class == config.ClassRingBearer || isSauronUnit(o.UnitID, cache) {
 		return
 	}
+	// Unit must be present in the target region to reinforce it.
+	unit := cache.Units[o.UnitID]
+	if unit.Region != o.TargetRegionID {
+		return
+	}
 	region := cache.Regions[o.TargetRegionID]
 	if cfg.Side == config.SideLight {
 		region.Control = state.ControlFree
@@ -338,6 +357,9 @@ func (tp *TurnProcessor) applyDeployNazgul(o DeployNazgulOrder, cache *state.Wor
 	from := unit.Region
 	tp.removeUnitFromRegion(from, o.UnitID, cache)
 	unit.Region = o.TargetRegionID
+	unit.Route = nil
+	unit.RouteIdx = 0
+	unit.RemainingPathCost = 0
 	cache.Units[o.UnitID] = unit
 	tp.addUnitToRegion(o.TargetRegionID, o.UnitID, cache)
 
@@ -509,11 +531,40 @@ func (tp *TurnProcessor) applyAttack(o AttackRegionOrder, cache *state.WorldStat
 	}
 
 	if len(defenderIDs) == 0 {
-		tp.removeUnitFromRegion(attackerUnit.Region, o.UnitID, cache)
+		from := attackerUnit.Region
+		tp.removeUnitFromRegion(from, o.UnitID, cache)
 		u := cache.Units[o.UnitID]
 		u.Region = o.TargetRegionID
 		cache.Units[o.UnitID] = u
 		tp.addUnitToRegion(o.TargetRegionID, o.UnitID, cache)
+
+		// Uncontested capture: update region control and emit all required events.
+		region := cache.Regions[o.TargetRegionID]
+		if attackerCfg.Side == config.SideLight {
+			region.Control = state.ControlFree
+		} else {
+			region.Control = state.ControlShadow
+		}
+		region.Fortified = false
+		cache.Regions[o.TargetRegionID] = region
+
+		events.UnitMoved = append(events.UnitMoved, UnitMovedEvent{
+			UnitID: o.UnitID, From: from, To: o.TargetRegionID, Turn: turn,
+		})
+		events.RegionControlChanged = append(events.RegionControlChanged,
+			RegionControlChangedEvent{RegionID: o.TargetRegionID, NewController: string(region.Control), Turn: turn})
+
+		// Disable Saruman if Light captures his start region uncontested.
+		if attackerCfg.Side == config.SideLight {
+			for _, ucfg := range cache.UnitConfigs {
+				if ucfg.Maia && ucfg.Side == config.SideDark &&
+					len(ucfg.MaiaAbilityPaths) > 0 &&
+					ucfg.StartRegion == o.TargetRegionID {
+					tp.disableSaruman(cache)
+					break
+				}
+			}
+		}
 		return
 	}
 
@@ -601,7 +652,7 @@ func (tp *TurnProcessor) decrementTempOpenTimers(cache *state.WorldStateCache, e
 			if blockerThere {
 				path.Status = state.PathBlocked
 			} else {
-				path.Status = state.PathOpen
+				path.Status = revertStatus(path.PreviousStatus)
 				path.BlockedBy = ""
 			}
 			events.PathStatusChanged = append(events.PathStatusChanged, PathStatusChangedEvent{

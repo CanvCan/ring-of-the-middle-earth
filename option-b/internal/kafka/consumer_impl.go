@@ -8,7 +8,7 @@ import (
 	"log"
 
 	confluentkafka "github.com/confluentinc/confluent-kafka-go/v2/kafka"
-	"github.com/rotr/option-b/internal/router"
+	"github.com/lotr/option-b/internal/router"
 )
 
 // Consumer wraps a confluent-kafka-go consumer.

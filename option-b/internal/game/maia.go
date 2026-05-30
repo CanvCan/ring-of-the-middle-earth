@@ -3,8 +3,8 @@ package game
 import (
 	"fmt"
 
-	"github.com/rotr/option-b/internal/config"
-	"github.com/rotr/option-b/internal/state"
+	"github.com/lotr/option-b/internal/config"
+	"github.com/lotr/option-b/internal/state"
 )
 
 // MaiaResult holds the outcome of a Maia ability.

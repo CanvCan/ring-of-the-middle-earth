@@ -1,7 +1,7 @@
 {
   "type": "record",
   "name": "GameOver",
-  "namespace": "com.rotr",
+  "namespace": "com.lotr",
   "fields": [
     {"name": "winner",    "type": "string"},
     {"name": "cause",     "type": "string"},

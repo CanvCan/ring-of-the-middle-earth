@@ -1,7 +1,7 @@
 {
   "type": "record",
   "name": "BattleResolved",
-  "namespace": "com.rotr",
+  "namespace": "com.lotr",
   "fields": [
     {"name": "regionId",    "type": "string"},
     {"name": "attackerWon", "type": "boolean"},

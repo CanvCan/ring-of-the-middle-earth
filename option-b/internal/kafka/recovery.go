@@ -8,7 +8,7 @@ import (
 	"time"
 
 	confluentkafka "github.com/confluentinc/confluent-kafka-go/v2/kafka"
-	"github.com/rotr/option-b/internal/state"
+	"github.com/lotr/option-b/internal/state"
 )
 
 // PersistedState is the serializable subset of WorldStateCache written to game.session.

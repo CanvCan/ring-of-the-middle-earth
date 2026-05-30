@@ -2,8 +2,8 @@ package game
 
 import (
 	"fmt"
-	"github.com/rotr/option-b/internal/config"
-	"github.com/rotr/option-b/internal/state"
+	"github.com/lotr/option-b/internal/config"
+	"github.com/lotr/option-b/internal/state"
 )
 
 // BlockPath transitions a path to BLOCKED if the unit is at an endpoint.

@@ -1,8 +1,8 @@
 package game
 
 import (
-	"github.com/rotr/option-b/internal/config"
-	"github.com/rotr/option-b/internal/state"
+	"github.com/lotr/option-b/internal/config"
+	"github.com/lotr/option-b/internal/state"
 )
 
 type GameResult struct {

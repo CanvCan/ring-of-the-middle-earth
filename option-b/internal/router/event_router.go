@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/rotr/option-b/internal/state"
+	"github.com/lotr/option-b/internal/state"
 )
 
 // Event wraps a Kafka message with its topic.

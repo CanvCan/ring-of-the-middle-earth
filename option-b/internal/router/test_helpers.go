@@ -1,6 +1,6 @@
 package router
 
-import "github.com/rotr/option-b/internal/state"
+import "github.com/lotr/option-b/internal/state"
 
 // NewTestRouter creates an EventRouter wired to test channels.
 // The cacheUpdateCh and engineCh are dummies — tests only verify routing.

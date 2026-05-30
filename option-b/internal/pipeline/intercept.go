@@ -4,8 +4,8 @@ import (
 	"context"
 	"sync"
 
-	"github.com/rotr/option-b/internal/config"
-	"github.com/rotr/option-b/internal/state"
+	"github.com/lotr/option-b/internal/config"
+	"github.com/lotr/option-b/internal/state"
 )
 
 const interceptWorkers   = 4

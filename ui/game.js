@@ -755,13 +755,14 @@ async function handleOrder(ot) {
   }
 
   if(ot==='DEPLOY_NAZGUL') {
-    const adjNbs=(ADJ[u&&u.currentRegion]||[]).map(e=>e.nb);
-    adjNbs.forEach(nid=>{
+    // DeployNazgul is a teleport — any region is a valid target, not just adjacent.
+    const allRegionIDs=Object.keys(NODES);
+    allRegionIDs.forEach(nid=>{
       const c=document.getElementById('nc-'+nid);
       if(c){c.setAttribute('fill','#4a0e5a');c.setAttribute('stroke','#9b59b6');c.setAttribute('stroke-width','3.5');}
       G._highlightedNodes.push(nid);
     });
-    const rid=await pickAdjacentRegion(adjNbs,'👆 Click adjacent region to deploy Nazgûl');
+    const rid=await pickAdjacentRegion([],'Click any region to teleport Nazgûl');
     G._clearHighlightedNodes();
     updateNodeColors(); updateEdges();
     if(!rid) return;

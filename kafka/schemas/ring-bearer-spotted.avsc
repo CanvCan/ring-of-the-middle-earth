@@ -1,7 +1,7 @@
 {
   "type": "record",
   "name": "RingBearerSpotted",
-  "namespace": "com.rotr",
+  "namespace": "com.lotr",
   "fields": [
     {"name": "pathId",    "type": "string"},
     {"name": "turn",      "type": "int"},

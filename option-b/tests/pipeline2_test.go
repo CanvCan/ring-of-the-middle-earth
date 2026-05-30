@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/rotr/option-b/internal/config"
-	"github.com/rotr/option-b/internal/pipeline"
-	"github.com/rotr/option-b/internal/state"
+	"github.com/lotr/option-b/internal/config"
+	"github.com/lotr/option-b/internal/pipeline"
+	"github.com/lotr/option-b/internal/state"
 )
 
 // ── Case 1: Positive intercept window → score > 0 ────────────────────────

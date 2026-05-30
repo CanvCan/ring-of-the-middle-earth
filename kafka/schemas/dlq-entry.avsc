@@ -1,7 +1,7 @@
 {
   "type": "record",
   "name": "DLQEntry",
-  "namespace": "com.rotr",
+  "namespace": "com.lotr",
   "fields": [
     {"name": "originalTopic", "type": "string"},
     {"name": "partition",     "type": "int"},

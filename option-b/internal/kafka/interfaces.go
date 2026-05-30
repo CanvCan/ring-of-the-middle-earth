@@ -7,7 +7,7 @@ package kafka
 import (
 	"context"
 
-	"github.com/rotr/option-b/internal/router"
+	"github.com/lotr/option-b/internal/router"
 )
 
 // MessageProducer is the interface used by the game engine to publish events.

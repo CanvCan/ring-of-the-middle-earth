@@ -1,6 +1,6 @@
 package state
 
-import "github.com/rotr/option-b/internal/config"
+import "github.com/lotr/option-b/internal/config"
 
 type UnitStatus string
 

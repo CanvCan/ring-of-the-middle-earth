@@ -13,12 +13,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/rotr/option-b/internal/config"
-	"github.com/rotr/option-b/internal/game"
-	kafkaclient "github.com/rotr/option-b/internal/kafka"
-	"github.com/rotr/option-b/internal/pipeline"
-	"github.com/rotr/option-b/internal/router"
-	"github.com/rotr/option-b/internal/state"
+	"github.com/lotr/option-b/internal/config"
+	"github.com/lotr/option-b/internal/game"
+	kafkaclient "github.com/lotr/option-b/internal/kafka"
+	"github.com/lotr/option-b/internal/pipeline"
+	"github.com/lotr/option-b/internal/router"
+	"github.com/lotr/option-b/internal/state"
 )
 
 // CacheAccess is the interface the Server uses to read/write the world state.
@@ -224,6 +224,17 @@ func (s *Server) Run(ctx context.Context) {
 	defer turnTimer.Stop()
 
 	for {
+		// Priority: give dispatch (submitCh) higher priority than the turn timer.
+		// Without this, Go's select randomly picks between a simultaneously-ready
+		// timer and submitCh, which can cause a dispatch to be silently ignored
+		// after the timer already advanced activeSide.
+		select {
+		case side := <-s.submitCh:
+			s.processDispatch(side, clients, turnTimer)
+			continue
+		default:
+		}
+
 		select {
 
 		// 1a. Pre-routed Light Side event from EventRouter (game.ring.position, game.broadcast full, etc.)
@@ -306,36 +317,11 @@ func (s *Server) Run(ctx context.Context) {
 				turnTimer.Reset(time.Duration(s.cfg.Game.TurnDurationSeconds) * time.Second)
 			}
 
-		// 8. Player dispatched orders — advance phase or process turn
+		// 8. Player dispatched orders — advance phase or process turn.
+		// The priority select above handles the common path; this case catches
+		// dispatches that arrive while other cases (SSE, cache, etc.) are selected.
 		case side := <-s.submitCh:
-			s.activeSideMu.RLock()
-			active := s.activeSide
-			s.activeSideMu.RUnlock()
-			if side != active {
-				log.Printf("[turn] dispatch from %s ignored — active=%s", side, active)
-				break
-			}
-			if side == config.SideLight {
-				// Light done — advance to Dark's phase
-				log.Printf("[turn] Light dispatched — starting Dark phase")
-				s.activeSideMu.Lock()
-				s.activeSide = config.SideDark
-				s.activeSideMu.Unlock()
-				// Reset timer for Dark's phase
-				if !turnTimer.Stop() { select { case <-turnTimer.C: default: } }
-				turnTimer.Reset(time.Duration(s.cfg.Game.TurnDurationSeconds) * time.Second)
-				s.broadcastPhaseChange(clients, config.SideDark)
-			} else {
-				// Dark done — process the full turn immediately
-				log.Printf("[turn] Dark dispatched — processing turn now")
-				if !turnTimer.Stop() { select { case <-turnTimer.C: default: } }
-				s.processTurnEnd(clients)
-				s.activeSideMu.Lock()
-				s.activeSide = config.SideLight
-				s.activeSideMu.Unlock()
-				turnTimer.Reset(time.Duration(s.cfg.Game.TurnDurationSeconds) * time.Second)
-				s.broadcastPhaseChange(clients, config.SideLight)
-			}
+			s.processDispatch(side, clients, turnTimer)
 
 		// 7. OS signal
 		case sig := <-signalCh:
@@ -345,6 +331,69 @@ func (s *Server) Run(ctx context.Context) {
 			_ = httpSrv.Shutdown(shutCtx)
 			return
 		}
+	}
+}
+
+// processDispatch handles a player dispatch signal. It gives priority to dispatch
+// over the timer: if the timer already advanced activeSide before this dispatch
+// arrived, we re-broadcast the current phase so the client stays in sync.
+func (s *Server) processDispatch(side string, clients map[string]SSEConnection, turnTimer *time.Timer) {
+	s.activeSideMu.RLock()
+	active := s.activeSide
+	s.activeSideMu.RUnlock()
+	if side != active {
+		// Timer fired first — re-broadcast current phase so the client isn't stuck.
+		log.Printf("[turn] late dispatch from %s (active=%s) — re-broadcasting current phase", side, active)
+		s.broadcastPhaseChange(clients, active)
+		return
+	}
+	if side == config.SideLight {
+		// If Light submitted DESTROY_RING and all conditions are met, process the turn
+		// immediately — no need to wait for Dark's phase.
+		if s.destroyRingConditionMet() {
+			log.Printf("[turn] Light DESTROY_RING conditions met — processing turn immediately")
+			if !turnTimer.Stop() {
+				select {
+				case <-turnTimer.C:
+				default:
+				}
+			}
+			s.processTurnEnd(clients)
+			s.activeSideMu.Lock()
+			s.activeSide = config.SideLight
+			s.activeSideMu.Unlock()
+			turnTimer.Reset(time.Duration(s.cfg.Game.TurnDurationSeconds) * time.Second)
+			s.broadcastPhaseChange(clients, config.SideLight)
+			return
+		}
+		// Normal case — advance to Dark's phase
+		log.Printf("[turn] Light dispatched — starting Dark phase")
+		s.activeSideMu.Lock()
+		s.activeSide = config.SideDark
+		s.activeSideMu.Unlock()
+		if !turnTimer.Stop() {
+			select {
+			case <-turnTimer.C:
+			default:
+			}
+		}
+		turnTimer.Reset(time.Duration(s.cfg.Game.TurnDurationSeconds) * time.Second)
+		s.broadcastPhaseChange(clients, config.SideDark)
+	} else {
+		// Dark done — process the full turn immediately
+		log.Printf("[turn] Dark dispatched — processing turn now")
+		if !turnTimer.Stop() {
+			select {
+			case <-turnTimer.C:
+			default:
+			}
+		}
+		s.processTurnEnd(clients)
+		s.activeSideMu.Lock()
+		s.activeSide = config.SideLight
+		s.activeSideMu.Unlock()
+		turnTimer.Reset(time.Duration(s.cfg.Game.TurnDurationSeconds) * time.Second)
+		s.broadcastPhaseChange(clients, config.SideLight)
 	}
 }
 
@@ -647,6 +696,9 @@ func (s *Server) pushTurnEventsToClients(clients map[string]SSEConnection, event
 	for _, e := range events.RouteBlocked {
 		sendAll(map[string]interface{}{"type": "RouteBlocked", "unitId": e.UnitID, "pathId": e.PathID, "turn": e.Turn})
 	}
+	for _, e := range events.MaiaAbilityUsed {
+		sendAll(map[string]interface{}{"type": "MaiaAbilityUsed", "unitId": e.UnitID, "pathId": e.PathID, "eventType": e.EventType, "turn": e.Turn})
+	}
 	if events.RingBearerMoved != nil {
 		// Light Side only
 		sendLight(map[string]interface{}{"type": "RingBearerMoved", "trueRegion": events.RingBearerMoved.TrueRegion, "turn": events.RingBearerMoved.Turn})
@@ -893,6 +945,37 @@ func (s *Server) publishStateSnapshot(cache state.WorldStateCache) {
 	if err := s.producer.Produce("game.session", "world-state", data); err != nil {
 		log.Printf("[session] publish snapshot: %v", err)
 	}
+}
+
+// destroyRingConditionMet returns true if a DESTROY_RING order is queued and
+// the win conditions are satisfied in the current cache: ring bearer is at the
+// destruction site and no Dark unit is present there.
+func (s *Server) destroyRingConditionMet() bool {
+	s.kafkaValidatedMu.Lock()
+	hasDestroyRing := false
+	for _, raw := range s.kafkaValidatedOrders {
+		var base game.BaseOrder
+		if json.Unmarshal(raw, &base) == nil && base.OrderType == game.OrderDestroyRing {
+			hasDestroyRing = true
+			break
+		}
+	}
+	s.kafkaValidatedMu.Unlock()
+	if !hasDestroyRing {
+		return false
+	}
+	cache := s.cache.Get()
+	site := cache.RingDestructionSiteID
+	if site == "" || cache.RingBearer.TrueRegion != site {
+		return false
+	}
+	for _, u := range cache.Units {
+		ucfg := cache.UnitConfigs[u.ID]
+		if ucfg.Side == config.SideDark && u.Region == site && u.Status == state.StatusActive {
+			return false
+		}
+	}
+	return true
 }
 
 // getActiveSide returns the side whose turn it currently is.
